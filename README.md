@@ -86,3 +86,32 @@ Para dudas o mejoras, indicame qué funcionalidad preferís priorizar (p. ej. Pa
 License
 -------
 Usá la licencia que prefieras; si no especificás nada, se asume uso privado. Agrego un `LICENSE` si querés (por ejemplo MIT).
+
+CLI vs UI (resumen rápido)
+-------------------------
+Este proyecto incluye dos formas de procesar los reportes:
+
+- `cajaDiaria.html` (UI en navegador): recomendado para uso interactivo y visual por parte de un operador. Permite cargar un CSV desde el equipo, ver totales al instante, descargar la planilla y emitir la impresión desde el navegador.
+- `rendicion_diaria.py` (script CLI en Python): recomendado para automatización, ejecución por lotes, integración en pipelines o cron jobs. Produce la misma planilla CSV y un resumen por consola.
+
+¿Cuál usar?
+- Si necesitás una experiencia rápida y visual para un usuario que revisa y corrige datos manualmente: usá `cajaDiaria.html`.
+- Si necesitás procesar archivos periódicamente, integrarlo en un servidor o ejecutar validaciones automáticas: usá `rendicion_diaria.py`.
+
+Consistencia y mantenimiento
+- Ambos flujos realizan los mismos cálculos (sumas por medio de cobranza). Es importante mantener las reglas de parseo y normalización (p. ej. `parse_amount` en Python y la lógica de JS) sincronizadas para evitar discrepancias en los totales.
+- Si querés centralizar la lógica en el futuro, considerá exponer un pequeño servicio HTTP (Flask/FastAPI) que implemente la lógica de cálculo y sea consumido por la UI. Otra opción es empaquetar la lógica en una librería que ambos consuman.
+
+Comandos de ejemplo
+- Ejecutar el script Python con el CSV de ejemplo:
+
+```bash
+python3 rendicion_diaria.py -i Reporte_Recibo.csv -o planilla_ingreso.csv
+```
+
+- Abrir la interfaz web: doble clic en `cajaDiaria.html` o abrirlo en el navegador. Hacer clic en "Cargar Archivo CSV" y seleccionar el archivo.
+
+Notas finales
+- Mantené una pequeña suite de pruebas si la lógica de negocio crece (p. ej. pytest para `parse_amount` y `procesar_csv`).
+- Cuando subas los cambios al repo remoto, verificá que incluyas `README.md`, `cajaDiaria.html` y `rendicion_diaria.py` para que cualquiera pueda reproducir el flujo.
+
