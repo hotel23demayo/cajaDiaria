@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script>
+      // Datos y estados globales
+      let cajaSeccionalData = [];
+      let efectivoSum = 0;
+      let tarjetaSum = 0;
+      // rows: arreglo de arrays (filas parseadas); rowsRaw: texto dividido en renglones crudos
+      let rows = null;
+      let rowsRaw = null;
+
+      // Parseador CSV sencillo pero que respeta campos entre comillas y comillas dobles
+      function parseCSV(text) {
+        const rowsOut = [];
+        let cur = '';
+        let row = [];
+        let inQuotes = false;
+        for (let i = 0; i < text.length; i++) {
+          const ch = text[i];
+          const next = text[i + 1];
+          if (ch === '"') {
+            if (inQuotes && next === '"') {
+              cur += '"';
+              i++; // skip escaped quote
+            } else {
+              inQuotes = !inQuotes;
+            }
+          } else if (ch === ',' && !inQuotes) {
+            row.push(cur);
+            cur = '';
+          } else if ((ch === '\n' || ch === '\r') && !inQuotes) {
+            // handle CRLF
+            if (ch === '\r' && next === '\n') i++;
+            row.push(cur);
+            rowsOut.push(row);
+            row = [];
+            cur = '';
+          } else {
+            cur += ch;
+          }
+        }
+        // push last
+        if (cur !== '' || row.length > 0) {
+          row.push(cur);
+          rowsOut.push(row);
+        }
+        // Trim trailing empty row if present
+        if (rowsOut.length > 0) {
+          const last = rowsOut[rowsOut.length - 1];
+          if (last.length === 1 && last[0] === '') rowsOut.pop();
+        }
+        return rowsOut;
+      }
+
+      function csvEscape(value) {
+        if (value == null) return '';
+        const str = String(value);
+        if (/[",\n\r]/.test(str)) {
+          return '"' + str.replace(/"/g, '""') + '"';
+        }
+        return str;
+      }
+
+      function handleFileSelect() {
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = '.csv';
+        fileInput.addEventListener('change', (event) => {
+          const file = event.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.readAsText(file, 'UTF-8');
+
+          reader.onload = () => {
+            const text = reader.result;
+            // raw lines (preserva formato simple si se usaba en otros puntos)
+            rowsRaw = text.split(/\r?\n/);
+            // parse CSV correctamente (respeta comillas y comas internas)
+            rows = parseCSV(text);
+
+            // reset totals
+            efectivoSum = 0;
+            tarjetaSum = 0;
+            cajaSeccionalData = [];
+
+            // Procesar filas parseadas (suponiendo que la primera fila es encabezado)
+            for (let i = 1; i < rows.length; i++) {
+              const columns = rows[i];
+              if (!columns || columns.length < 6) continue; // menos de las columnas esenciales
+
+              const nroRecibo = columns[0] || '';
+              const nombre = columns[1] || '';
+              const medioCobranza = (columns[3] || '').trim();
+              const fechaRecibo = columns[4] || '';
+              const importeRaw = (columns[5] || '').trim();
+              const importe = parseFloat(importeRaw.replace(/\./g, '').replace(',', '.'));
+              const notaCredito = columns[8] || '';
+              const referencia = columns[6] || '';
+              const usuarioAlta = columns[7] || '';
+
+              if (!isNaN(importe)) {
+                if (medioCobranza.toLowerCase() === 'caja seccional') {
+                  efectivoSum += importe;
+                  cajaSeccionalData.push({ nroRecibo, fechaRecibo, nombre, notaCredito, referencia, importe, medioCobranza, usuarioAlta, lote: '', cupon: '' });
+                } else {
+                  tarjetaSum += importe;
+                }
+              }
+            }
+
+            const totalSum = efectivoSum + tarjetaSum;
+            const rendicionElement = document.getElementById('rendicion');
+            rendicionElement.innerHTML = `Efectivo: $${efectivoSum.toFixed(2)}<br>Tarjeta: $${tarjetaSum.toFixed(2)}<br>Total de recaudación: $${totalSum.toFixed(2)}`;
+              // Mostrar info del archivo y cantidad de filas procesadas
+              const fileInfoEl = document.getElementById('fileInfo');
+              if (fileInfoEl) {
+                const processed = Math.max(0, rows.length - 1);
+                fileInfoEl.textContent = `Archivo: ${file.name} — Filas procesadas: ${processed}`;
+              }
+          };
+        });
+        fileInput.click();
+      }
+
+      function guardarPlanillaIngreso() {
+        if (!rows || rows.length <= 1) {
+          alert('Primero debes seleccionar y cargar un archivo CSV.');
+          return;
+        }
+
+        const header = ['Nro. recibo', 'Fecha recibo', 'Nombre', 'Nota crédito', 'Referencia', 'Lote', 'Cupon', 'Importe', 'Medio de cobranza', 'Usuario alta'];
+        let csvContent = header.map(csvEscape).join(',') + '\n';
+
+        for (let i = rows.length - 1; i >= 1; i--) {
+          const columns = rows[i];
+          if (!columns || columns.length < 6) continue;
+          const nroRecibo = columns[0] || '';
+          const fechaRecibo = columns[4] || '';
+          const nombre = columns[1] || '';
+          const importeRaw = columns[5] || '';
+          const medioCobranza = columns[3] || '';
+          const notaCredito = columns[8] || '';
+          const referencia = columns[6] || '';
+          const usuarioAlta = columns[7] || '';
+          const lote = '';
+          const cupon = '';
+
+          const filaArr = [nroRecibo, fechaRecibo, nombre, notaCredito, referencia, lote, cupon, importeRaw, medioCobranza, usuarioAlta];
+          csvContent += filaArr.map(csvEscape).join(',') + '\n';
+        }
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', 'planilla_ingreso.csv');
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }
+
+      /**
+       * Funcion que extrae los datos, los formatea y genera una impresion de tabla.
+       */
+      function imprimirPlanilla() {
+          if (!rows || rows.length <= 1) {
+              alert('Primero debes seleccionar y cargar un archivo CSV.');
+              return;
+          }
+
+          let tablaHTML = `
+              <html>
+              <head>
+                  <title>Planilla de Ingresos</title>
+                  <style>
+                      body { font-family: Arial, sans-serif; }
+                      table { width: 100%; border-collapse: collapse; }
+                      th, td { border: 1px solid #000; padding: 8px; text-align: left; }
+                      th { background-color: #f2f2f2; }
+                      .total-row th, .total-row td { font-weight: bold; background-color: #ddd; }
+                  </style>
+              </head>
+              <body>
+              <h2>Caja Diaria</h2>
+              <table>
+                  <thead>
+                      <tr>
+                          <th>HAB</th>
+                          <th>EST-MAP</th>
+                          <th>BEBIDAS</th>
+                          <th>FICHAS</th>
+                          <th>MEDIO PAGO</th>
+                          <th>RECIBO NRO</th>
+                          <th>TOTAL</th>
+                      </tr>
+                  </thead>
+                  <tbody>
+          `;
+
+          let totalGeneral = 0;
+
+          for (let i = 1; i < rows.length; i++) {
+              const columns = rows[i];
+              if (!columns || columns.length < 6) continue;
+
+              const nroReciboCompleto = columns[0] || '';
+              const medioCobranza = columns[3] || '';
+              const importe = parseFloat((columns[5] || '').replace(/\./g, '').replace(',', '.'));
+              if (isNaN(importe)) continue;
+              const referencia = (columns[6] || '').trim();
+
+              const hab_col = referencia;
+              const extras_col = '';
+              const bebidas_col = 'BEBIDAS PPJ';
+              const fichas_col = '';
+              const medio_pago_col = medioCobranza;
+              const recibo_n = nroReciboCompleto.length > 5 ? nroReciboCompleto.slice(-5) : nroReciboCompleto;
+              const total_col = importe.toFixed(2);
+
+              totalGeneral += importe;
+
+              tablaHTML += `
+                  <tr>
+                      <td>${hab_col}</td>
+                      <td>${extras_col}</td>
+                      <td>${bebidas_col}</td>
+                      <td>${fichas_col}</td>
+                      <td>${medio_pago_col}</td>
+                      <td>${recibo_n}</td>
+                      <td>${total_col}</td>
+                  </tr>
+              `;
+          }
+
+          const efectivoFinal = efectivoSum > 0 ? `$${efectivoSum.toFixed(2)}` : '';
+          const tarjetaFinal = tarjetaSum > 0 ? `$${tarjetaSum.toFixed(2)}` : '';
+
+          tablaHTML += `
+      <tr class="total-row">
+          <td colspan="6" style="text-align: right;">Total Tarjeta:</td>
+          <td>${tarjetaFinal}</td>
+      </tr>
+      <tr class="total-row">
+          <td colspan="6" style="text-align: right;">Total Efectivo:</td>
+          <td>${efectivoFinal}</td>
+      </tr>
+  `;
+
+          // cerrar tags
+          tablaHTML += '</tbody></table></body></html>';
+
+          const ventanaImpresion = window.open('', '_blank');
+          ventanaImpresion.document.write(tablaHTML);
+          ventanaImpresion.document.close();
+          ventanaImpresion.print();
+      }
+
+
+  </script>
+    <!-- Interfaz mínima para cargar/visualizar/acciones -->
+    <div class="card" style="max-width:480px;margin:30px auto;padding:20px;border-radius:10px;box-shadow:0 0 10px rgba(0,0,0,.15);font-family:Arial, sans-serif;text-align:center;">
+      <img class="logo" id="logoBtn" src="cashTr.png" alt="Logo" style="width:70px;height:70px;cursor:pointer;margin:0 auto 10px;" onclick="handleFileSelect()">
+      <h1 style="margin:6px 0 10px;font-size:20px;">Rendición Caja Diaria</h1>
+      <div style="margin-top:8px;">
+        <button class="upload-button" onclick="handleFileSelect()" style="display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:6px;border:none;background:#1976d2;color:#fff;cursor:pointer;">
+          <span style="font-family:Material Icons;"></span>
+          Cargar Archivo CSV
+        </button>
+      </div>
+      <p id="rendicion" style="font-size:18px;margin:6px 0;color:#222;"></p>
+      <p id="fileInfo" style="font-size:12px;color:#555;margin:6px 0;"></p>
+      <div style="display:flex;gap:10px;justify-content:center;margin-top:12px;">
+        <button id="btnGuardar" onclick="guardarPlanillaIngreso()" style="padding:8px 14px;background:#4CAF50;color:#fff;border:none;border-radius:6px;cursor:pointer;">Guardar para Planilla de Ingresos</button>
+        <button id="btnImprimir" onclick="imprimirPlanilla()" style="padding:8px 14px;background:#2196F3;color:#fff;border:none;border-radius:6px;cursor:pointer;">Imprimir Planilla</button>
+      </div>
+    </div>
+
+  </body>
+  </html>
+
+
+
+
+
