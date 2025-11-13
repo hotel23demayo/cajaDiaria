@@ -53,6 +53,22 @@
         return rowsOut;
       }
 
+      // Parsea importes en formatos comunes: "1234.56", "1.234,56", "1234,56" y elimina símbolos de moneda
+      function parseAmount(str) {
+        if (!str && str !== 0) return NaN;
+        let s = String(str).trim();
+        s = s.replace(/[$€\s]/g, '');
+        // si tiene punto y coma (coma), asumimos que '.' es separador de miles y ',' decimal
+        if (s.indexOf('.') !== -1 && s.indexOf(',') !== -1) {
+          s = s.replace(/\./g, '').replace(/,/g, '.');
+        } else if (s.indexOf(',') !== -1 && s.indexOf('.') === -1) {
+          // solo coma -> decimal
+          s = s.replace(/,/g, '.');
+        }
+        const v = parseFloat(s);
+        return Number.isNaN(v) ? NaN : v;
+      }
+
       function csvEscape(value) {
         if (value == null) return '';
         const str = String(value);
@@ -94,7 +110,7 @@
               const medioCobranza = (columns[3] || '').trim();
               const fechaRecibo = columns[4] || '';
               const importeRaw = (columns[5] || '').trim();
-              const importe = parseFloat(importeRaw.replace(/\./g, '').replace(',', '.'));
+              const importe = parseAmount(importeRaw);
               const notaCredito = columns[8] || '';
               const referencia = columns[6] || '';
               const usuarioAlta = columns[7] || '';
@@ -208,7 +224,7 @@
 
               const nroReciboCompleto = columns[0] || '';
               const medioCobranza = columns[3] || '';
-              const importe = parseFloat((columns[5] || '').replace(/\./g, '').replace(',', '.'));
+              const importe = parseAmount(columns[5] || '');
               if (isNaN(importe)) continue;
               const referencia = (columns[6] || '').trim();
 
